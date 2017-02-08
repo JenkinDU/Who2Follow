@@ -10,6 +10,8 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapred.JobConf;
+import org.apache.hadoop.mapred.lib.ChainMapper;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.Reducer;
@@ -21,7 +23,13 @@ import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
  */
 public class Who2Follow {
 
-//	public static class PairsInputFormat extends Inputformat
+	public static class RevertMapper extends Mapper<Object, Text, IntWritable, IntWritable> {
+		
+		
+		public void map(Object key, Text values, Context context) throws IOException, InterruptedException {
+			
+		}
+	}
 	/********************/
 	/** 	Mapper     **/
 	/********************/
@@ -172,10 +180,21 @@ public class Who2Follow {
 	}
 
 	public static void main(String[] args) throws IOException, InterruptedException, ClassNotFoundException {
+//		JobConf conf = new JobConf(Who2Follow.class);  
+//		conf.setJobName("who to follow");
+//		JobConf rMapper  = new JobConf(false);
+//		ChainMapper.addMapper(conf, RevertMapper.class,   
+//				Object.class,     // input key type   
+//	            Text.class,             // input value type  
+//	            IntWritable.class,             // output key type  
+//	            IntWritable.class,      // output value type  
+//	            false,                  //byValue or byRefference 传值还是传引用  
+//	            rMapper);
+		
 		Configuration conf = new Configuration();
 		Job job = Job.getInstance(conf, "who to follow");
 		job.setJarByClass(Who2Follow.class);
-//		job.setInputFormatClass();
+		job.setMapperClass(RevertMapper.class);
 		job.setMapperClass(AllPairsMapper.class);
 		job.setReducerClass(CountReducer.class);
 		job.setOutputKeyClass(IntWritable.class);
