@@ -26,13 +26,14 @@ public class Who2Follow {
 	 * @author Zhen Du
 	 *
 	 */
-	public static class RevertMapper extends Mapper<Object, Text, IntWritable, IntWritable> {
+	public static class RevertMapper extends Mapper<Object, Text, Text, Text> {
 
 		public void map(Object key, Text values, Context context) throws IOException, InterruptedException {
 			StringTokenizer st = new StringTokenizer(values.toString());
-			IntWritable user = new IntWritable(Integer.parseInt(st.nextToken()));
+			Text user = new Text(st.nextToken());
+//			IntWritable user = new IntWritable(Integer.parseInt(st.nextToken()));
 			while (st.hasMoreTokens()) {
-				context.write(new IntWritable(Integer.parseInt(st.nextToken())), user);
+				context.write(new Text(st.nextToken()), user);
 			}
 		}
 	}
@@ -42,9 +43,9 @@ public class Who2Follow {
 	 * @author Zhen Du
 	 *
 	 */
-	public static class AllPairsMapper extends Mapper<Object, Text, IntWritable, IntWritable> {
+	public static class AllPairsMapper extends Mapper<Text, Text, IntWritable, IntWritable> {
 
-		public void map(Object key, Text values, Context context) throws IOException, InterruptedException {
+		public void map(Text key, Text values, Context context) throws IOException, InterruptedException {
 			StringTokenizer st = new StringTokenizer(values.toString());
 			IntWritable user = new IntWritable(Integer.parseInt(st.nextToken()));
 			// 'friends' will store the list of friends of user 'user'
@@ -199,8 +200,8 @@ public class Who2Follow {
 		Configuration conf = new Configuration();
 		Job job = Job.getInstance(conf, "who to follow");
 		job.setJarByClass(Who2Follow.class);
-		ChainMapper.addMapper(job, RevertMapper.class, Object.class, Text.class, IntWritable.class, IntWritable.class, new Configuration(false));
-		ChainMapper.addMapper(job, AllPairsMapper.class, Object.class, Text.class, IntWritable.class, IntWritable.class, new Configuration(false));
+		ChainMapper.addMapper(job, RevertMapper.class, Object.class, Text.class, Text.class, Text.class, new Configuration(false));
+		ChainMapper.addMapper(job, AllPairsMapper.class, Text.class, Text.class, IntWritable.class, IntWritable.class, new Configuration(false));
 //		job.setMapperClass(AllPairsMapper.class);
 		job.setReducerClass(CountReducer.class);
 		job.setOutputKeyClass(IntWritable.class);
