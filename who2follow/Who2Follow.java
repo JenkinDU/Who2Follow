@@ -13,8 +13,9 @@ import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.Reducer;
-import org.apache.hadoop.mapreduce.lib.chain.ChainMapper;
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+import org.apache.hadoop.mapreduce.lib.jobcontrol.ControlledJob;
+import org.apache.hadoop.mapreduce.lib.jobcontrol.JobControl;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 
 /**
@@ -23,29 +24,54 @@ import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 public class Who2Follow {
 	/**
 	 * Revert the key value
+	 * 
 	 * @author Zhen Du
 	 *
 	 */
-	public static class RevertMapper extends Mapper<Object, Text, Text, Text> {
+	public static class RevertMapper extends Mapper<Object, Text, IntWritable, IntWritable> {
 
 		public void map(Object key, Text values, Context context) throws IOException, InterruptedException {
 			StringTokenizer st = new StringTokenizer(values.toString());
-			Text user = new Text(st.nextToken());
-//			IntWritable user = new IntWritable(Integer.parseInt(st.nextToken()));
+			// Text user = new Text(st.nextToken());
+			IntWritable user = new IntWritable(Integer.parseInt(st.nextToken()));
 			while (st.hasMoreTokens()) {
-				context.write(new Text(st.nextToken()), user);
+				IntWritable i = new IntWritable(Integer.parseInt(st.nextToken()));
+				// System.out.println("k:"+key+"v:"+i.get());
+				context.write(i, user);
+				context.write(user, new IntWritable(-i.get()));
 			}
 		}
 	}
 
 	/**
-	 * Emit the paired values
+	 * Reduce the revert paired values
+	 * 
 	 * @author Zhen Du
 	 *
 	 */
-	public static class AllPairsMapper extends Mapper<Text, Text, IntWritable, IntWritable> {
+	public static class RevertReducer extends Reducer<IntWritable, IntWritable, IntWritable, Text> {
+		// The reduce method
+		public void reduce(IntWritable key, Iterable<IntWritable> values, Context context)
+				throws IOException, InterruptedException {
+			String value = "";
+			while (values.iterator().hasNext()) {
+				int i = values.iterator().next().get();
+				value += (i + " ");
+			}
+			context.write(key, new Text(value));
+		}
 
-		public void map(Text key, Text values, Context context) throws IOException, InterruptedException {
+	}
+
+	/**
+	 * Emit the paired values
+	 * 
+	 * @author Zhen Du
+	 *
+	 */
+	public static class AllPairsMapper extends Mapper<Object, Text, IntWritable, IntWritable> {
+
+		public void map(Object key, Text values, Context context) throws IOException, InterruptedException {
 			StringTokenizer st = new StringTokenizer(values.toString());
 			IntWritable user = new IntWritable(Integer.parseInt(st.nextToken()));
 			// 'friends' will store the list of friends of user 'user'
@@ -56,10 +82,12 @@ public class Who2Follow {
 			IntWritable friend1 = new IntWritable();
 			while (st.hasMoreTokens()) {
 				Integer friend = Integer.parseInt(st.nextToken());
-				friend1.set(-friend);
-				context.write(user, friend1);
-				friends.add(friend); // save the friends of user 'user' for
-										// later
+				if (friend.intValue() < 0) {
+					friend1.set(friend);
+					context.write(user, friend1);
+				} else {
+					friends.add(friend);
+				}
 			}
 			// Now we can emit all (a,b) and (b,a) pairs
 			// where a!=b and a & b are friends of user 'user'.
@@ -81,6 +109,7 @@ public class Who2Follow {
 
 	/**
 	 * Reduce the paired values
+	 * 
 	 * @author Zhen Du
 	 *
 	 */
@@ -198,16 +227,41 @@ public class Who2Follow {
 
 	public static void main(String[] args) throws IOException, InterruptedException, ClassNotFoundException {
 		Configuration conf = new Configuration();
-		Job job = Job.getInstance(conf, "who to follow");
+		Job job = Job.getInstance(conf, "who to follow1");
 		job.setJarByClass(Who2Follow.class);
-		ChainMapper.addMapper(job, RevertMapper.class, Object.class, Text.class, Text.class, Text.class, new Configuration(false));
-		ChainMapper.addMapper(job, AllPairsMapper.class, Text.class, Text.class, IntWritable.class, IntWritable.class, new Configuration(false));
-//		job.setMapperClass(AllPairsMapper.class);
-		job.setReducerClass(CountReducer.class);
+		job.setMapperClass(RevertMapper.class);
+		job.setReducerClass(RevertReducer.class);
 		job.setOutputKeyClass(IntWritable.class);
 		job.setOutputValueClass(IntWritable.class);
 		FileInputFormat.addInputPath(job, new Path(args[0]));
 		FileOutputFormat.setOutputPath(job, new Path(args[1]));
-		System.exit(job.waitForCompletion(true) ? 0 : 1);
+		ControlledJob ctrljob1 = new ControlledJob(conf);
+		ctrljob1.setJob(job);
+		// job2
+		Job job1 = Job.getInstance(conf, "who to follow2");
+		job1.setMapperClass(AllPairsMapper.class);
+		job1.setReducerClass(CountReducer.class);
+		job1.setOutputKeyClass(IntWritable.class);
+		job1.setOutputValueClass(IntWritable.class);
+		FileInputFormat.addInputPath(job1, new Path(args[1]));
+		FileOutputFormat.setOutputPath(job1, new Path(args[2]));
+		ControlledJob ctrljob2 = new ControlledJob(conf);
+		ctrljob2.setJob(job1);
+
+		ctrljob2.addDependingJob(ctrljob1);
+		JobControl jc = new JobControl("who to follow");
+		jc.addJob(ctrljob1);
+		jc.addJob(ctrljob2);
+
+		Thread t = new Thread(jc);
+		t.start();
+		while (true) {
+			if (jc.allFinished()) {
+				System.out.println(jc.getSuccessfulJobList());
+				jc.stop();
+				break;
+			}
+		}
+		// System.exit(job.waitForCompletion(true) ? 0 : 1);
 	}
 }
